@@ -1,84 +1,58 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
-import asyncio
 import random
-from dotenv import load_dotenv
-import os
-
-# 環境変数の読み込み
-load_dotenv()
-TOKEN = os.getenv("DISCORD_TOKEN")
 
 # ボットの準備
 intents = discord.Intents.default()
-intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
     print(f"{bot.user.name} is ready!")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s).")
+    except Exception as e:
+        print(e)
 
-@bot.command()
-async def janken(ctx):
-    # メッセージ送信
-    message = await ctx.send(
-        "じゃんけんを始めます！リアクションで選んでください。\n"
-        "👊: グー\n✌️: チョキ\n✋: パー"
+@bot.tree.command(name="janken", description="じゃんけんをしましょう！")
+async def janken(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "じゃんけんを開始します！以下の手から選んでください：\n1️⃣ グー\n2️⃣ チョキ\n3️⃣ パー\n選択肢をチャットで入力してください（例: 1）",
+        ephemeral=True
     )
 
-    # リアクションの追加
-    reactions = ["👊", "✌️", "✋"]
-    for reaction in reactions:
-        await message.add_reaction(reaction)
-
-    # リアクションの集計
-    def check(reaction, user):
-        return (
-            reaction.message.id == message.id
-            and str(reaction.emoji) in reactions
-            and not user.bot
-        )
-
-    results = {}
+    # プレイヤーの選択を非公開で収集
+    def check(message):
+        return message.author == interaction.user and message.content in ["1", "2", "3"]
 
     try:
-        while True:
-            # リアクションを待つ
-            reaction, user = await bot.wait_for("reaction_add", timeout=30.0, check=check)
-            if user.id not in results:
-                results[user.id] = str(reaction.emoji)
-                await ctx.send(f"{user.display_name} が選びました: {reaction.emoji}")
+        reply = await bot.wait_for("message", timeout=30.0, check=check)
+        user_choice_map = {"1": "グー", "2": "チョキ", "3": "パー"}
+        user_choice = user_choice_map[reply.content]
     except asyncio.TimeoutError:
-        # ボットのじゃんけん選択
-        bot_choice = random.choice(reactions)
-        await ctx.send(f"ボットは {bot_choice} を選びました！\nじゃんけん終了！結果を確認しています...")
+        await interaction.followup.send("時間切れです！もう一度お試しください。", ephemeral=True)
+        return
 
-        # 勝敗判定の準備
-        summary = {"👊": 0, "✌️": 0, "✋": 0}
-        for choice in results.values():
-            summary[choice] += 1
+    # ボットの手を選ぶ
+    bot_choice = random.choice(["グー", "チョキ", "パー"])
 
-        # 最終結果の集計
-        result_message = "結果:\n"
-        for choice, count in summary.items():
-            result_message += f"{choice}: {count}人\n"
-        result_message += f"ボット: {bot_choice}\n"
+    # 勝敗判定ロジック
+    if user_choice == bot_choice:
+        result = "引き分けです！"
+    elif (user_choice == "グー" and bot_choice == "チョキ") or \
+         (user_choice == "チョキ" and bot_choice == "パー") or \
+         (user_choice == "パー" and bot_choice == "グー"):
+        result = "あなたの勝ちです！"
+    else:
+        result = "あなたの負けです！"
 
-        # プレイヤーごとの勝敗判定
-        for user_id, user_choice in results.items():
-            if user_choice == bot_choice:
-                outcome = "引き分け"
-            elif (user_choice == "👊" and bot_choice == "✌️") or \
-                 (user_choice == "✌️" and bot_choice == "✋") or \
-                 (user_choice == "✋" and bot_choice == "👊"):
-                outcome = "勝ち"
-            else:
-                outcome = "負け"
-
-            user = await bot.fetch_user(user_id)
-            result_message += f"{user.display_name} の結果: {outcome}\n"
-
-        await ctx.send(result_message)
+    # 結果を非公開で送信
+    await interaction.followup.send(
+        f"あなたの手: {user_choice}\nボットの手: {bot_choice}\n結果: {result}",
+        ephemeral=True
+    )
 
 # ボットを起動
-bot.run(TOKEN)
+bot.run("YOUR_TOKEN_HERE")
