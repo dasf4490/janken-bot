@@ -1,6 +1,6 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
+import asyncio
 import random
 from dotenv import load_dotenv
 import os
@@ -11,54 +11,70 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 # ボットの準備
 intents = discord.Intents.default()
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
     print(f"{bot.user.name} is ready!")
-    try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s).")
-    except Exception as e:
-        print(e)
 
-@bot.tree.command(name="janken", description="じゃんけんをしましょう！")
-async def janken(interaction: discord.Interaction):
-    await interaction.response.send_message(
-        "じゃんけんを開始します！以下の手から選んでください：\n1️⃣ グー\n2️⃣ チョキ\n3️⃣ パー\n選択肢をチャットで入力してください（例: 1）",
-        ephemeral=True
-    )
+@bot.command()
+async def janken(ctx):
+    await ctx.send("じゃんけんを始めます！ボットがDMを送信しますので、そこでリアクションで手を選んでください！")
 
-    # プレイヤーの選択を非公開で収集
-    def check(message):
-        return message.author == interaction.user and message.content in ["1", "2", "3"]
+    # プレイヤー全員にDMを送信してリアクションを収集
+    player_choices = {}
+    reactions = ["👊", "✌️", "✋"]
 
-    try:
-        reply = await bot.wait_for("message", timeout=30.0, check=check)
-        user_choice_map = {"1": "グー", "2": "チョキ", "3": "パー"}
-        user_choice = user_choice_map[reply.content]
-    except asyncio.TimeoutError:
-        await interaction.followup.send("時間切れです！もう一度お試しください。", ephemeral=True)
-        return
+    async def send_dm_and_wait(player):
+        try:
+            dm_message = await player.send(
+                "じゃんけんの手をリアクションで選んでください！\n"
+                "👊: グー\n"
+                "✌️: チョキ\n"
+                "✋: パー"
+            )
+            for reaction in reactions:
+                await dm_message.add_reaction(reaction)
 
-    # ボットの手を選ぶ
-    bot_choice = random.choice(["グー", "チョキ", "パー"])
+            def check(reaction, user):
+                return user == player and str(reaction.emoji) in reactions
+
+            reaction, user = await bot.wait_for("reaction_add", timeout=30.0, check=check)
+            player_choices[player.id] = str(reaction.emoji)
+            await player.send(f"あなたの選択: {reaction.emoji} を受け付けました！")
+        except asyncio.TimeoutError:
+            await player.send("時間切れです。手の選択ができませんでした。")
+
+    # チャンネルの全メンバーにDMを送信
+    tasks = []
+    for member in ctx.guild.members:
+        if not member.bot:
+            tasks.append(send_dm_and_wait(member))
+
+    await asyncio.gather(*tasks)
+
+    # ボットの手をランダム選択
+    bot_choice = random.choice(reactions)
+    bot_hand_map = {"👊": "グー", "✌️": "チョキ", "✋": "パー"}
+    await ctx.send(f"ボットの手は {bot_hand_map[bot_choice]} です！")
 
     # 勝敗判定ロジック
-    if user_choice == bot_choice:
-        result = "引き分けです！"
-    elif (user_choice == "グー" and bot_choice == "チョキ") or \
-         (user_choice == "チョキ" and bot_choice == "パー") or \
-         (user_choice == "パー" and bot_choice == "グー"):
-        result = "あなたの勝ちです！"
-    else:
-        result = "あなたの負けです！"
+    win_table = {"👊": "✌️", "✌️": "✋", "✋": "👊"}
+    results_message = ""
 
-    # 結果を非公開で送信
-    await interaction.followup.send(
-        f"あなたの手: {user_choice}\nボットの手: {bot_choice}\n結果: {result}",
-        ephemeral=True
-    )
+    for player_id, player_choice in player_choices.items():
+        player = await bot.fetch_user(player_id)
+        if player_choice == bot_choice:
+            result = "引き分け"
+        elif win_table[player_choice] == bot_choice:
+            result = "勝利"
+        else:
+            result = "敗北"
+        results_message += f"{player.display_name}: {result}（選んだ手: {bot_hand_map[player_choice]}）\n"
+
+    # 結果を送信
+    await ctx.send("結果:\n" + results_message)
 
 # ボットを起動
 bot.run(TOKEN)
