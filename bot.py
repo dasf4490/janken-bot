@@ -67,28 +67,39 @@ async def janken(ctx):
 
     # 勝敗判定ロジック
     win_table = {"👊": "✌️", "✌️": "✋", "✋": "👊"}
-    all_hands = set(player_choices.values())
-    strongest_hands = [
-        hand for hand in all_hands if all(win_table[hand] != other for other in all_hands)
-    ]
+    all_hands = player_choices.values()
 
-    results_message = ""
-    if len(strongest_hands) == 1:
-        # 勝利の手が1つの場合、勝者を判定
-        winning_hand = strongest_hands[0]
-        winners = [
-            player_id
-            for player_id, player_choice in player_choices.items()
-            if player_choice == winning_hand
-        ]
-        results_message += f"勝利の手: {hand_map[winning_hand]}\n"
-        results_message += "勝者:\n"
+    # 各プレイヤーの結果を判定
+    winners = []
+    losers = []
+    for player_id, player_choice in player_choices.items():
+        is_winner = all(
+            win_table[player_choice] == other_hand
+            or player_choice == other_hand
+            for other_hand in all_hands
+        )
+        if is_winner:
+            winners.append(player_id)
+        else:
+            losers.append(player_id)
+
+    # 結果メッセージの作成
+    results_message = "各プレイヤーの選択:\n"
+    for player_id, player_choice in player_choices.items():
+        player = await bot.fetch_user(player_id)
+        results_message += f"- {player.display_name}: {hand_map[player_choice]}\n"
+
+    # 勝者と敗者の表示
+    if winners:
+        results_message += "\n**勝者:**\n"
         for winner_id in winners:
             winner = await bot.fetch_user(winner_id)
             results_message += f"- {winner.display_name}\n"
-    else:
-        # 引き分けの場合
-        results_message += "全員引き分けです！\n"
+    if losers:
+        results_message += "\n**敗者:**\n"
+        for loser_id in losers:
+            loser = await bot.fetch_user(loser_id)
+            results_message += f"- {loser.display_name}\n"
 
     # 結果を送信
     await ctx.send("結果:\n" + results_message)
