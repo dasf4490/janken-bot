@@ -20,9 +20,9 @@ async def on_ready():
 
 @bot.command()
 async def janken(ctx):
-    await ctx.send("じゃんけんを始めます！ボットがDMを送信しますので、そこでリアクションで手を選んでください！")
+    await ctx.send("じゃんけんを始めます！ボットがDMを送信しますので、リアクションで手を選んでください！")
 
-    # プレイヤー全員にDMを送信してリアクションを収集
+    # プレイヤー全員にDMを送信し、リアクションで選択を受け取る
     player_choices = {}
     reactions = ["👊", "✌️", "✋"]
 
