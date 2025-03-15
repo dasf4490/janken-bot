@@ -40,11 +40,7 @@ async def janken(ctx):
             )
             # リアクションを追加
             for reaction in reactions:
-                try:
-                    await dm_message.add_reaction(reaction)
-                except discord.HTTPException:
-                    await player.send("リアクションの追加に失敗しました。もう一度お試しください。")
-                    return
+                await dm_message.add_reaction(reaction)
 
             # リアクションを待機
             def check(reaction, user):
@@ -71,21 +67,31 @@ async def janken(ctx):
 
     # 勝敗判定ロジック
     win_table = {"👊": "✌️", "✌️": "✋", "✋": "👊"}
-    all_hands = player_choices.values()
+    all_choices = set(player_choices.values())
 
-    # 各プレイヤーの結果を判定
-    winners = []
-    losers = []
+    # **ぐー、ちょき、ぱーが全て存在する場合**
+    if len(all_choices) == 3:
+        results_message = "各プレイヤーの選択:\n"
+        for player_id, player_choice in player_choices.items():
+            player = await bot.fetch_user(player_id)
+            results_message += f"- {player.display_name}: {hand_map[player_choice]}\n"
+        results_message += "\nぐー、ちょき、ぱーが揃っているため、全員引き分け（あいこ）です！"
+        await ctx.send("結果:\n" + results_message)
+        return
+
+    # 各プレイヤー間の勝敗を記録
+    results = {player_id: {"wins": 0, "losses": 0} for player_id in player_choices.keys()}
     for player_id, player_choice in player_choices.items():
-        is_winner = all(
-            win_table[player_choice] == other_hand
-            or player_choice == other_hand
-            for other_hand in all_hands
-        )
-        if is_winner:
-            winners.append(player_id)
-        else:
-            losers.append(player_id)
+        for opponent_id, opponent_choice in player_choices.items():
+            if player_id != opponent_id:
+                if win_table[player_choice] == opponent_choice:
+                    results[player_id]["wins"] += 1
+                elif win_table[opponent_choice] == player_choice:
+                    results[player_id]["losses"] += 1
+
+    # 勝者と敗者を判定
+    winners = [player_id for player_id, result in results.items() if result["wins"] > 0 and result["losses"] == 0]
+    losers = [player_id for player_id, result in results.items() if result["losses"] > 0 and result["wins"] == 0]
 
     # 結果メッセージの作成
     results_message = "各プレイヤーの選択:\n"
@@ -93,12 +99,12 @@ async def janken(ctx):
         player = await bot.fetch_user(player_id)
         results_message += f"- {player.display_name}: {hand_map[player_choice]}\n"
 
-    # 勝者と敗者の表示
     if winners:
         results_message += "\n**勝者:**\n"
         for winner_id in winners:
             winner = await bot.fetch_user(winner_id)
             results_message += f"- {winner.display_name}\n"
+
     if losers:
         results_message += "\n**敗者:**\n"
         for loser_id in losers:
