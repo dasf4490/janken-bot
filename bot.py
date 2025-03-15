@@ -40,7 +40,11 @@ async def janken(ctx):
             )
             # リアクションを追加
             for reaction in reactions:
-                await dm_message.add_reaction(reaction)
+                try:
+                    await dm_message.add_reaction(reaction)
+                except discord.HTTPException:
+                    await player.send("リアクションの追加に失敗しました。もう一度お試しください。")
+                    return
 
             # リアクションを待機
             def check(reaction, user):
