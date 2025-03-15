@@ -2,6 +2,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import random
+from dotenv import load_dotenv
+import os
+
+# 環境変数の読み込み
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 # ボットの準備
 intents = discord.Intents.default()
@@ -55,4 +61,4 @@ async def janken(interaction: discord.Interaction):
     )
 
 # ボットを起動
-bot.run("YOUR_TOKEN_HERE")
+bot.run(TOKEN)
