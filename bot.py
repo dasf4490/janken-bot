@@ -12,6 +12,8 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 # ボットの準備
 intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True
+intents.members = True  # メンバー情報を取得するため
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
@@ -19,11 +21,27 @@ async def on_ready():
     print(f"{bot.user.name} is ready!")
 
 @bot.command()
-async def janken(ctx):
-    # ゲーム開始のアナウンス
-    await ctx.send("じゃんけんを始めます！ボットがDMを送りますので、リアクションで手を選択してください！")
+async def janken(ctx, *role_names):
+    if not role_names:
+        await ctx.send("少なくとも1つのロール名を指定してください。")
+        return
 
-    # プレイヤー全員にDMを送信し、リアクションで選択を受け取る
+    # 指定されたロールを取得
+    target_roles = []
+    for role_name in role_names:
+        role = discord.utils.get(ctx.guild.roles, name=role_name)
+        if role:
+            target_roles.append(role)
+        else:
+            await ctx.send(f"ロール '{role_name}' が見つかりませんでした。")
+
+    if not target_roles:
+        await ctx.send("指定されたロールが見つかりませんでした。")
+        return
+
+    await ctx.send(f"じゃんけんを始めます！指定されたロール: {', '.join([role.name for role in target_roles])} のメンバーにDMを送信します。")
+
+    # 指定されたロールに属するメンバーにDMを送信し、リアクションで選択を受け取る
     player_choices = {}
     reactions = ["👊", "✌️", "✋"]
 
@@ -50,11 +68,14 @@ async def janken(ctx):
         except asyncio.TimeoutError:
             await player.send("時間切れです。手の選択ができませんでした。")
 
-    # チャンネルの全メンバーにDMを送信
+    # 重複なくロール内の全メンバーにDMを送信
     tasks = []
-    for member in ctx.guild.members:
-        if not member.bot:
-            tasks.append(send_dm_and_wait(member))
+    unique_members = set()
+    for role in target_roles:
+        for member in role.members:
+            if not member.bot and member not in unique_members:
+                unique_members.add(member)
+                tasks.append(send_dm_and_wait(member))
 
     await asyncio.gather(*tasks)
 
